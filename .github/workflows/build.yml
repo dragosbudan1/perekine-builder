@@ -1,0 +1,112 @@
+name: Build Service
+
+on:
+  repository_dispatch:
+    types: [service-change]
+  workflow_dispatch:  # Allow manual triggering for testing
+    inputs:
+      service_repo:
+        description: 'Service repository (owner/repo)'
+        required: false
+        default: 'dragosbudan1/perekine-service'
+      commit_sha:
+        description: 'Commit SHA to build'
+        required: false
+        default: 'main'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display build information
+        run: |
+          echo "🚀 Build triggered"
+          echo "Service Repository: ${{ github.event.client_payload.service_repo || inputs.service_repo }}"
+          echo "Commit SHA: ${{ github.event.client_payload.commit_sha || inputs.commit_sha }}"
+          echo "Branch: ${{ github.event.client_payload.branch }}"
+          echo "Author: ${{ github.event.client_payload.author }}"
+          echo "Commit Message: ${{ github.event.client_payload.commit_message }}"
+
+      - name: Checkout perekine-builder (this repo)
+        uses: actions/checkout@v4
+        with:
+          path: builder
+
+      - name: Checkout perekine-service
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.client_payload.service_repo || inputs.service_repo }}
+          ref: ${{ github.event.client_payload.commit_sha || inputs.commit_sha }}
+          path: service
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout perekine-config
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/perekine-config
+          path: config
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Display checked out structure
+        run: |
+          echo "📁 Workspace structure:"
+          ls -la
+          echo ""
+          echo "📦 Service files:"
+          ls -la service/
+          echo ""
+          echo "⚙️ Config files:"
+          ls -la config/
+
+      - name: Read configuration
+        id: read-config
+        run: |
+          echo "Reading build configuration from perekine-config..."
+          if [ -f "config/build-config.yml" ]; then
+            cat config/build-config.yml
+          else
+            echo "⚠️ No build-config.yml found, using defaults"
+          fi
+
+      - name: Run build process
+        run: |
+          echo "🔨 Starting build process..."
+          cd service
+          
+          # Example build steps - customize based on your needs
+          echo "Service commit: $(git rev-parse HEAD)"
+          echo "Service files:"
+          find . -type f -not -path '*/\.git/*' | head -20
+          
+          # Here you would add your actual build commands
+          # For example:
+          # - npm install && npm run build
+          # - docker build -t myservice .
+          # - make build
+          # - ./gradlew build
+          
+          echo "✅ Build completed successfully"
+
+      - name: Archive build artifacts (example)
+        run: |
+          mkdir -p artifacts
+          echo "Build completed at $(date)" > artifacts/build-info.txt
+          echo "Commit: ${{ github.event.client_payload.commit_sha }}" >> artifacts/build-info.txt
+          echo "Branch: ${{ github.event.client_payload.branch }}" >> artifacts/build-info.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: artifacts/
+          retention-days: 30
+
+      - name: Report build status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Build succeeded"
+          else
+            echo "❌ Build failed"
+          fi
+
